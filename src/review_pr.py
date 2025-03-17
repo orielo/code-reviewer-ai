@@ -349,13 +349,25 @@ Summary:
 """
 
         try:
-            client = openai.OpenAI()
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,  # Lower temperature for more consistent reviews
-            )
-            review_text = response.choices[0].message.content.strip()
+            # Initialize the OpenAI client with error handling for different versions
+            try:
+                # Modern OpenAI client initialization (v1.0.0+)
+                client = openai.OpenAI(api_key=openai.api_key)
+                response = client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,  # Lower temperature for more consistent reviews
+                )
+                review_text = response.choices[0].message.content.strip()
+            except (TypeError, AttributeError) as e:
+                # Fallback to legacy OpenAI API (pre-v1.0.0)
+                logger.info(f"Using legacy OpenAI API due to: {str(e)}")
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                )
+                review_text = response.choices[0].message.content.strip()
             
             # Parse response
             if "Summary:" in review_text:
