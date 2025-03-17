@@ -407,18 +407,28 @@ Summary:
             review_text = response.choices[0].message.content.strip()
             
             # Parse response
-            if "Summary:" in review_text:
-                inline_comments, summary = review_text.split("Summary:", 1)
-            else:
-                inline_comments, summary = review_text, "No summary provided."
+            try:
+                if "Summary:" in review_text:
+                    inline_comments, summary = review_text.split("Summary:", 1)
+                else:
+                    # If there's no "Summary:" marker, treat the whole text as comments and provide a generic summary
+                    logger.warning(f"No 'Summary:' section found in response for {file_name}")
+                    inline_comments = review_text
+                    summary = "No summary provided by the AI review."
 
-            summary = summary.strip()
-            if not summary or summary.lower().startswith("no summary"):
-                # Provide a fallback summary if AI is empty or unhelpful
-                summary = (
-                    f"**{file_name}** appears to have minor changes that don't require significant feedback. "
-                    f"The code looks generally well-structured and follows best practices."
-                )
+                summary = summary.strip()
+                if not summary or summary.lower().startswith("no summary"):
+                    # Provide a fallback summary if AI is empty or unhelpful
+                    summary = (
+                        f"**{file_name}** appears to have minor changes that don't require significant feedback. "
+                        f"The code looks generally well-structured and follows best practices."
+                    )
+            except Exception as e:
+                logger.error(f"Error parsing AI response for {file_name}: {str(e)}")
+                logger.error(f"Response preview: {review_text[:100]}...")
+                # Generate error summary
+                inline_comments = ""
+                summary = f"**Error parsing AI response**: {str(e)}"
 
             # Format and collect the summary
             formatted_summary = f"### {file_name}\n{summary}"
@@ -426,25 +436,45 @@ Summary:
 
             # Process inline comments - improve parsing with more robust line number extraction
             inline_dict = {}
-            comment_pattern = re.compile(r'^(?:(?:Line(?:\s+number)?|L)?[\s:]*)(\d+)[\s:]+(.+)$', re.IGNORECASE | re.MULTILINE)
-            
-            # Find all comments with line numbers using regex
-            matches = comment_pattern.findall(inline_comments)
-            
-            for line_num, comment_text in matches:
-                comment_text = comment_text.strip()
-                if not comment_text:
-                    continue
+            try:
+                # This pattern should capture exactly two groups: line number and comment text
+                comment_pattern = re.compile(r'^(?:(?:Line(?:\s+number)?|L)?[\s:]*)(\d+)[\s:]+(.+)$', re.IGNORECASE | re.MULTILINE)
                 
-                # Format the comment text for better readability
-                formatted_comment = format_comment_text(comment_text, file_name, language)
+                # Find all comments with line numbers using regex
+                matches = comment_pattern.findall(inline_comments)
+                logger.info(f"Found {len(matches)} potential comments in {file_name}")
                 
-                # Merge if there's already a comment for this line
-                if line_num in inline_dict:
-                    inline_dict[line_num] += f"\n\n**Additional issue:** {formatted_comment}"
-                else:
-                    inline_dict[line_num] = formatted_comment
-                    
+                for match in matches:
+                    try:
+                        # findall returns tuples of the captured groups, should be (line_num, comment_text)
+                        if len(match) == 2:
+                            line_num, comment_text = match
+                        else:
+                            # Log unusual match format and continue
+                            logger.warning(f"Unexpected match format in {file_name}: {match}")
+                            continue
+                            
+                        comment_text = comment_text.strip()
+                        if not comment_text:
+                            continue
+                        
+                        # Format the comment text for better readability
+                        formatted_comment = format_comment_text(comment_text, file_name, language)
+                        
+                        # Merge if there's already a comment for this line
+                        if line_num in inline_dict:
+                            inline_dict[line_num] += f"\n\n**Additional issue:** {formatted_comment}"
+                        else:
+                            inline_dict[line_num] = formatted_comment
+                    except Exception as e:
+                        # Log the error and continue with other comments
+                        logger.error(f"Error processing comment match '{match}': {str(e)}")
+                        continue
+            except Exception as e:
+                logger.error(f"Error parsing comments in {file_name}: {str(e)}")
+                # Add fallback summary for error cases
+                all_summaries.append(f"### {file_name}\n❌ Error during review: {str(e)}")
+
             if inline_dict:
                 # We pass the entire patch to figure out positions, but only lines that are truly improved
                 reviews.append((file_name, patch, inline_dict, existing_comment_map))
@@ -592,10 +622,21 @@ def post_general_summary(repo_name, pr_number, token, summary_text, comment_coun
     # Add some metadata to help with debugging
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
     
+    # Check if there are error messages in the summary
+    has_errors = "❌ Error during review" in summary_text
+    
     # Format summary with more useful information
+    error_notice = ""
+    if has_errors:
+        error_notice = """
+> ⚠️ **Note**: Some errors occurred during the review process. 
+> Please check the details below or review the action logs for more information.
+
+"""
+    
     body = f"""# 🔍 AI Code Review Summary
 
-{summary_text}
+{error_notice}{summary_text}
 
 ---
 *Generated at {timestamp} • {comment_count} inline comments added*
