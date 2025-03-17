@@ -9,6 +9,7 @@ from github import Github
 from pathlib import Path
 import logging
 from datetime import datetime
+import httpx
 
 # Configure logging
 logging.basicConfig(
@@ -349,8 +350,11 @@ Summary:
 """
 
         try:
-            # Use only the modern OpenAI client approach (v1.0.0+)
-            client = openai.OpenAI(api_key=openai.api_key)
+            # Use only the modern OpenAI client approach (v1.0.0+) with explicitly disabled proxies
+            client = openai.OpenAI(
+                api_key=openai.api_key,
+                http_client=httpx.Client(proxies=None)
+            )
             response = client.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": prompt}],
