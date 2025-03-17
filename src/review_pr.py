@@ -52,6 +52,12 @@ class PRReviewConfig:
                 "style_guide": "Airbnb",
                 "extra_focus": ["null_safety", "async_patterns"]
             }
+        },
+        "comment_styling": {
+            "title_prefix": "🔍 AI Code Review - Line",
+            "show_code_block": True,
+            "show_details": True,
+            "custom_signature": ""
         }
     }
     
@@ -180,6 +186,39 @@ class PRReviewConfig:
             "threshold": threshold_guidance,
             "mode": mode_guidance
         }
+
+def format_comment_text(comment_text, file_name, language):
+    """Format a comment for better readability and impact."""
+    # Strip any unnecessary prefixes LLMs sometimes add
+    comment_text = re.sub(r'^(Issue|Problem|Bug|Note|Warning):\s*', '', comment_text)
+    
+    # Identify the type of comment to add appropriate emoji and formatting
+    if re.search(r'security|vulnerability|attack|exploit|injection|xss|csrf|sanitiz', comment_text.lower()):
+        prefix = "🔒 **Security Issue:** "
+    elif re.search(r'performance|slow|efficient|complexity|o\(n\^2\)|optimize', comment_text.lower()):
+        prefix = "⚡ **Performance Issue:** "
+    elif re.search(r'bug|error|incorrect|wrong|fix|issue|problem|fail', comment_text.lower()):
+        prefix = "🐛 **Potential Bug:** "
+    elif re.search(r'style|format|indent|spacing|naming|convention', comment_text.lower()):
+        prefix = "🎨 **Style Issue:** "
+    elif re.search(r'maintain|readability|clean|refactor|complex|understand', comment_text.lower()):
+        prefix = "🧹 **Maintainability:** "
+    else:
+        prefix = "💡 **Suggestion:** "
+        
+    # Add code examples when appropriate
+    if "instead" in comment_text.lower() or "consider" in comment_text.lower():
+        # Try to extract or generate a code example
+        if language == "python" and not "```python" in comment_text:
+            # Add code block if one doesn't exist and there seems to be code
+            code_match = re.search(r'`([^`]+)`', comment_text)
+            if code_match and len(code_match.group(1)) > 5:  # If there's inline code of reasonable length
+                # Split suggestion from example
+                suggestion, rest = re.split(r'\b(consider|instead|use|replace)\b', comment_text, 1, re.IGNORECASE)
+                if len(rest) > 5:  # If we have a meaningful suggestion part
+                    comment_text = f"{suggestion}\n\nRecommended approach:\n```{language}\n{code_match.group(1)}\n```"
+    
+    return prefix + comment_text
 
 def get_pull_request_diff(repo_name, pr_number, token):
     """Fetch PR diff from GitHub API."""
@@ -329,11 +368,14 @@ INSTRUCTIONS:
 4. **Language-Specific Guidance**: {prompt_additions['language_specific']}
 
 5. **Inline Comments**:
-   - Only comment on lines that need improvement
-   - Format each comment as `lineNumber: comment text`
-   - Be specific and actionable
-   - Include both what to fix AND why it matters
-   - Suggest concrete improvements when possible
+   - Only comment on lines that NEED improvement or contain issues
+   - CRITICAL: Format comments EXACTLY as: "Line X: Your detailed comment" where X is the line number
+   - For each comment:
+     * Be specific about what the issue is
+     * Explain WHY it matters (security risk, performance impact, etc.)
+     * Provide a concrete suggestion for improvement
+     * If possible, include a code example of the fix
+   - Prioritize significant issues (security, bugs, performance) over minor style issues
 
 6. **PR Summary**:
    - Provide a concise summary (<= {summary_length} words)
@@ -380,25 +422,27 @@ Summary:
             formatted_summary = f"### {file_name}\n{summary}"
             all_summaries.append(formatted_summary)
 
-            # Process inline comments
+            # Process inline comments - improve parsing with more robust line number extraction
             inline_dict = {}
-            for line in inline_comments.splitlines():
-                line = line.strip()
-                if not line:
+            comment_pattern = re.compile(r'^(?:(?:Line(?:\s+number)?|L)?[\s:]*)(\d+)[\s:]+(.+)$', re.IGNORECASE | re.MULTILINE)
+            
+            # Find all comments with line numbers using regex
+            matches = comment_pattern.findall(inline_comments)
+            
+            for line_num, comment_text in matches:
+                comment_text = comment_text.strip()
+                if not comment_text:
                     continue
+                
+                # Format the comment text for better readability
+                formatted_comment = format_comment_text(comment_text, file_name, language)
+                
+                # Merge if there's already a comment for this line
+                if line_num in inline_dict:
+                    inline_dict[line_num] += f"\n\n**Additional issue:** {formatted_comment}"
+                else:
+                    inline_dict[line_num] = formatted_comment
                     
-                # Extract line number and comment using regex for better reliability
-                match = re.match(r'^(\d+):\s+(.+)$', line)
-                if match:
-                    line_num = match.group(1)
-                    comment_text = match.group(2).strip()
-                    
-                    # Merge if there's already a comment for this line
-                    if line_num in inline_dict:
-                        inline_dict[line_num] += f"\n\nAdditionally: {comment_text}"
-                    else:
-                        inline_dict[line_num] = comment_text
-                        
             if inline_dict:
                 # We pass the entire patch to figure out positions, but only lines that are truly improved
                 reviews.append((file_name, patch, inline_dict, existing_comment_map))
@@ -411,11 +455,18 @@ Summary:
     combined_summary = "\n\n".join(all_summaries)
     return reviews, combined_summary
 
-def post_inline_comments(repo_name, pr_number, token, reviews):
+def post_inline_comments(repo_name, pr_number, token, reviews, config):
     """Post inline comments to GitHub PR with improved formatting and deduplication."""
     logger.info(f"Posting inline comments to PR #{pr_number} in repo {repo_name}")
     url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/comments"
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+
+    # Get styling preferences
+    styling = config.get("comment_styling", {})
+    title_prefix = styling.get("title_prefix", "🔍 AI Code Review - Line")
+    show_code_block = styling.get("show_code_block", True)
+    show_details = styling.get("show_details", True)
+    custom_signature = styling.get("custom_signature", "")
 
     # Fetch the PR details to get the latest commit ID
     pr_info_url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
@@ -432,6 +483,19 @@ def post_inline_comments(repo_name, pr_number, token, reviews):
         for file_name, patch, inline_dict, existing_comments in reviews:
             lines = patch.split('\n')
             # Track the current line number in the diff for every `+` line
+            position = 1
+            plus_line_counter = 0
+            # Store the actual line content for better context in comments
+            line_content_map = {}
+
+            # First pass: collect line contents
+            for diff_line in lines:
+                if diff_line.startswith('+') and not diff_line.startswith('+++ '):
+                    plus_line_counter += 1
+                    # Store the actual code content (without the leading '+')
+                    line_content_map[str(plus_line_counter)] = diff_line[1:].strip()
+
+            # Reset counters for second pass
             position = 1
             plus_line_counter = 0
 
@@ -453,9 +517,38 @@ def post_inline_comments(repo_name, pr_number, token, reviews):
                             position += 1
                             continue
                         
-                        # Improve comment formatting with markdown
+                        # Get the actual code content for this line
+                        code_content = line_content_map.get(line_str, "")
+                        language = get_file_language(file_name)
+                        
+                        # Build comment body according to styling preferences
+                        body_parts = [f"### {title_prefix} {line_str}\n\n"]
+                        
+                        # Add a direct reference to the line being commented on
+                        line_reference = f"Referenced code at line {line_str}:"
+                        body_parts.append(f"**{line_reference}**\n\n")
+                        
+                        if show_code_block and code_content:
+                            body_parts.append(f"```{language}\n{code_content}\n```\n\n")
+                        
+                        body_parts.append(f"{comment_text}\n\n")
+                        
+                        if show_details:
+                            body_parts.append(
+                                f"<details>\n"
+                                f"<summary>About this review</summary>\n\n"
+                                f"This automated review identifies potential issues in your code to help improve quality.\n"
+                                f"Each suggestion aims to make your code more secure, performant, or maintainable.\n"
+                                f"</details>"
+                            )
+                        
+                        if custom_signature:
+                            body_parts.append(f"\n\n{custom_signature}")
+                        
+                        body = "".join(body_parts)
+                        
                         comment_data = {
-                            "body": f"💡 **AI Review:** {comment_text}",
+                            "body": body,
                             "commit_id": commit_id,
                             "path": file_name,
                             "position": position
@@ -553,7 +646,7 @@ def main():
         reviews, summary = review_code_with_gpt(pr_diff, config, existing_comments)
         
         # Post inline comments
-        comment_count = post_inline_comments(repo_name, pr_number, token, reviews)
+        comment_count = post_inline_comments(repo_name, pr_number, token, reviews, config)
         
         # Post general summary
         post_general_summary(repo_name, pr_number, token, summary, comment_count)

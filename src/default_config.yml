@@ -2,29 +2,45 @@
 # This file controls the behavior of the AI code reviewer
 
 # Main review settings
-review_mode: concise          # Options: concise, standard, thorough
-comment_threshold: medium     # Options: low, medium, high
+review_mode: "standard"          # Options: concise, standard, thorough
+comment_threshold: "medium"     # Options: low, medium, high
 
 # Define what to focus on
 review_focus:
-  - bugs
-  - security
-  - performance
-  - maintainability
+  - "bugs"
+  - "security"
+  - "performance"
+  - "maintainability"
+  - "readability"
 
 # File filtering
 file_filters:
   include: ["*"]
-  exclude: ["*.md", "*.txt", "package-lock.json", "yarn.lock", "*.json", "*.csv", "*.svg"]
+  exclude: ["*.md", "*.txt", "package-lock.json", "yarn.lock"]
 
 # How many words max in the summary
-summary_length: 150
+summary_length: 200
 
 # Language-specific settings
 language_specific_rules:
   python:
-    style_guide: PEP8
-    extra_focus: ["type_hints"]
+    style_guide: "PEP8"
+    extra_focus: ["type_hints", "docstrings"]
   javascript:
     style_guide: Airbnb
-    extra_focus: ["null_safety"] 
+    extra_focus: ["null_safety"]
+
+# Comment appearance settings
+comment_styling:
+  title_prefix: "🔍 AI Code Review - Line"
+  show_code_block: true
+  show_details: true
+  emoji_prefix: true
+  custom_signature: ""  # Optional signature text to add at the end of each comment
+
+# Additional settings
+ignore_lines_containing:
+  - "TODO"
+  - "FIXME"
+  - "NOSONAR"
+  - "# pragma: no cover" 

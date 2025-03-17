@@ -70,6 +70,7 @@ review_focus:
   - security
   - performance
   - maintainability
+  - readability
 
 # File filtering
 file_filters:
@@ -79,6 +80,14 @@ file_filters:
 # How many words max in the summary
 summary_length: 150
 
+# Comment appearance settings
+comment_styling:
+  title_prefix: "🔍 AI Code Review - Line"  # Prefix for comment titles
+  show_code_block: true                    # Show code snippet in the comment
+  show_details: true                       # Show expandable details section
+  emoji_prefix: true                       # Use emojis in comment categorization
+  custom_signature: ""                     # Optional signature text
+
 # Language-specific settings
 language_specific_rules:
   python:
@@ -87,7 +96,24 @@ language_specific_rules:
   javascript:
     style_guide: Airbnb
     extra_focus: ["null_safety"]
+
+# Lines to ignore (won't be commented on)
+ignore_lines_containing:
+  - "TODO"
+  - "FIXME"
+  - "NOSONAR"
+  - "# pragma: no cover"
 ```
+
+## Comment Styling
+
+The action now provides improved comment formatting with the following features:
+
+1. **Clear Line References**: Each comment includes a direct reference to the code line it's addressing
+2. **Code Context**: Comments include the relevant code snippet for immediate context
+3. **Categorized Issues**: Comments are categorized (security, performance, etc.) with appropriate icons
+4. **Expandable Details**: Additional information is available in collapsible sections
+5. **Custom Signatures**: Option to add custom signature text to all comments
 
 ## License
 
