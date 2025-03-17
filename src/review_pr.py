@@ -56,8 +56,10 @@ class PRReviewConfig:
         "comment_styling": {
             "title_prefix": "🔍 AI Code Review - Line",
             "show_code_block": True,
-            "show_details": True,
-            "custom_signature": ""
+            "show_details": False,
+            "custom_signature": "",
+            "emoji_prefix": True,
+            "show_code_preview": False
         }
     }
     
@@ -521,26 +523,31 @@ def post_inline_comments(repo_name, pr_number, token, reviews, config):
                         code_content = line_content_map.get(line_str, "")
                         language = get_file_language(file_name)
                         
-                        # Build comment body according to styling preferences
-                        body_parts = [f"### {title_prefix} {line_str}\n\n"]
+                        # Build comment body according to styling preferences - much more minimal
+                        body_parts = []
                         
-                        # Add a direct reference to the line being commented on
-                        line_reference = f"Referenced code at line {line_str}:"
-                        body_parts.append(f"**{line_reference}**\n\n")
+                        # Simplified title - no line numbers since GitHub already shows this context
+                        if styling.get("emoji_prefix", True):
+                            body_parts.append(f"### AI Code Review\n\n")
+                        else:
+                            body_parts.append(f"### Code Review\n\n")
                         
-                        if show_code_block and code_content:
+                        # Remove redundant line reference since GitHub UI already shows this
+                        
+                        # Only show code snippet if explicitly enabled and non-empty
+                        if show_code_block and code_content and styling.get("show_code_preview", False):
                             body_parts.append(f"```{language}\n{code_content}\n```\n\n")
                         
-                        body_parts.append(f"{comment_text}\n\n")
+                        # The actual review comment is the most important part
+                        body_parts.append(f"{comment_text}")
                         
-                        if show_details:
-                            body_parts.append(
-                                f"<details>\n"
+                        # Make details section optional and off by default
+                        if show_details and styling.get("show_details", False):
+                            body_parts.append(f"\n\n<details>\n"
                                 f"<summary>About this review</summary>\n\n"
                                 f"This automated review identifies potential issues in your code to help improve quality.\n"
                                 f"Each suggestion aims to make your code more secure, performant, or maintainable.\n"
-                                f"</details>"
-                            )
+                                f"</details>")
                         
                         if custom_signature:
                             body_parts.append(f"\n\n{custom_signature}")

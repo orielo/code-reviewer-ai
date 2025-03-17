@@ -82,11 +82,12 @@ summary_length: 150
 
 # Comment appearance settings
 comment_styling:
-  title_prefix: "🔍 AI Code Review - Line"  # Prefix for comment titles
-  show_code_block: true                    # Show code snippet in the comment
-  show_details: true                       # Show expandable details section
-  emoji_prefix: true                       # Use emojis in comment categorization
-  custom_signature: ""                     # Optional signature text
+  title_prefix: "🔍 AI Code Review"  # Title for comments
+  show_code_block: true              # Whether to include code blocks 
+  show_details: false                # Hide expandable details by default
+  emoji_prefix: true                 # Use emojis in comment categorization
+  show_code_preview: false           # Hide code preview by default
+  custom_signature: ""               # Optional signature text
 
 # Language-specific settings
 language_specific_rules:
@@ -107,13 +108,13 @@ ignore_lines_containing:
 
 ## Comment Styling
 
-The action now provides improved comment formatting with the following features:
+The action provides streamlined comment formatting with the following features:
 
-1. **Clear Line References**: Each comment includes a direct reference to the code line it's addressing
-2. **Code Context**: Comments include the relevant code snippet for immediate context
-3. **Categorized Issues**: Comments are categorized (security, performance, etc.) with appropriate icons
-4. **Expandable Details**: Additional information is available in collapsible sections
-5. **Custom Signatures**: Option to add custom signature text to all comments
+1. **Clean, Minimal Design**: Comments are concise and focused on the issue
+2. **Clear Issue Categorization**: Comments are tagged by type (security, performance, etc.) with visual indicators
+3. **Customizable Appearance**: Control exactly how verbose or minimal you want comments to be
+4. **GitHub Integration**: Comments attach directly to the relevant line without redundant references
+5. **Focused Content**: Comments highlight only what matters, reducing visual noise
 
 ## License
 

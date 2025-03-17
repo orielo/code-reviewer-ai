@@ -2,7 +2,7 @@
 # This file controls the behavior of the AI code reviewer
 
 # Main review settings
-review_mode: "standard"          # Options: concise, standard, thorough
+review_mode: "concise"          # Options: concise, standard, thorough
 comment_threshold: "medium"     # Options: low, medium, high
 
 # Define what to focus on
@@ -32,10 +32,11 @@ language_specific_rules:
 
 # Comment appearance settings
 comment_styling:
-  title_prefix: "🔍 AI Code Review - Line"
+  title_prefix: "🔍 AI Code Review"
   show_code_block: true
-  show_details: true
+  show_details: false
   emoji_prefix: true
+  show_code_preview: false
   custom_signature: ""  # Optional signature text to add at the end of each comment
 
 # Additional settings
